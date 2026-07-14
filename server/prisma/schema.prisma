@@ -1,0 +1,188 @@
+// BPOHire — PostgreSQL schema
+// Run: npx prisma migrate dev --name init && npm run seed
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CANDIDATE
+  RECRUITER
+  ADMIN
+}
+
+enum WorkSetup {
+  ONSITE
+  HYBRID
+  REMOTE
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(CANDIDATE)
+  name         String
+  phone        String?
+  location     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  candidateProfile CandidateProfile?
+  company          Company?          @relation(fields: [companyId], references: [id])
+  companyId        String?
+  title            String? // recruiter job title
+
+  jobsPosted       Job[]
+  applications     Application[]
+  savedJobs        SavedJob[]
+  sentMessages     Message[]
+  recruiterThreads Thread[]          @relation("RecruiterThreads")
+  candidateThreads Thread[]          @relation("CandidateThreads")
+
+  @@index([role])
+}
+
+model CandidateProfile {
+  id              String    @id @default(uuid())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String    @unique
+  headline        String?
+  about           String?
+  experienceYears Int       @default(0)
+  skills          String[]
+  languages       String[]
+  shiftPreference String?
+  setupPreference String?
+  expectedSalary  String?
+  resumeUrl       String?
+  resumeName      String?
+  updatedAt       DateTime  @updatedAt
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  logoText  String
+  color     String   @default("#1d4ed8")
+  industry  String?
+  size      String?
+  hq        String?
+  website   String?
+  about     String?
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  jobs      Job[]
+  recruiters User[]
+}
+
+model Job {
+  id              String    @id @default(uuid())
+  title           String
+  slug            String    @unique
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId       String
+  postedBy        User      @relation(fields: [postedById], references: [id])
+  postedById      String
+
+  category        String
+  campaign        String // Inbound Voice, Outbound Sales, Non-Voice / Chat, ...
+  level           String
+  setup           WorkSetup
+  shift           String
+  location        String
+  languages       String[]
+
+  salaryMin       Int
+  salaryMax       Int
+  currency        String    @default("PHP")
+  period          String    @default("month")
+  seats           Int       @default(1)
+  experience      String?
+
+  description     String
+  responsibilities String[]
+  requirements    String[]
+  benefits        String[]
+
+  featured        Boolean   @default(false)
+  active          Boolean   @default(true)
+  postedAt        DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  applications    Application[]
+  savedBy         SavedJob[]
+  threads         Thread[]
+
+  @@index([category, setup, shift, level])
+  @@index([companyId])
+}
+
+model Application {
+  id        String            @id @default(uuid())
+  job       Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId     String
+  candidate User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  status    ApplicationStatus @default(APPLIED)
+  note      String?
+  appliedAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([jobId, userId])
+  @@index([status])
+}
+
+model SavedJob {
+  id      String   @id @default(uuid())
+  job     Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId   String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String
+  savedAt DateTime @default(now())
+
+  @@unique([jobId, userId])
+}
+
+model Thread {
+  id          String    @id @default(uuid())
+  recruiter   User      @relation("RecruiterThreads", fields: [recruiterId], references: [id], onDelete: Cascade)
+  recruiterId String
+  candidate   User      @relation("CandidateThreads", fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId String
+  job         Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  jobId       String?
+  createdAt   DateTime  @default(now())
+  messages    Message[]
+
+  @@unique([recruiterId, candidateId, jobId])
+}
+
+model Message {
+  id       String   @id @default(uuid())
+  thread   Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadId String
+  sender   User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderId String
+  body     String
+  readAt   DateTime?
+  sentAt   DateTime @default(now())
+
+  @@index([threadId, sentAt])
+}
